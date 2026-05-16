@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kare-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kareuser
+      POSTGRES_PASSWORD: karepass
+      POSTGRES_DB: karerehber
+    ports:
+      - "5433:5432"
+    volumes:
+      - kare_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kareuser -d karerehber"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  kare_postgres_data:
