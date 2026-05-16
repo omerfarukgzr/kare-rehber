@@ -30,6 +30,16 @@ func main() {
 
 	lg := applogger.New(cfg.AppEnv)
 
+	lg.Info("config loaded",
+		"env", cfg.AppEnv,
+		"port", cfg.HTTPPort,
+		"database_url", cfg.RedactedDatabaseURL(),
+		"cors", cfg.CORSAllowedOrigins,
+		"auto_migrate", cfg.AutoMigrate,
+		"seed_admin", cfg.SeedAdmin,
+		"seed_test_users", cfg.SeedTestUsers,
+	)
+
 	if cfg.AutoMigrate {
 		lg.Info("auto-migrate: running")
 		if err := dbmigrate.RunUp(cfg.DatabaseURL); err != nil {
