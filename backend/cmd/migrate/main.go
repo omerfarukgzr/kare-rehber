@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -8,10 +9,9 @@ import (
 	"strconv"
 
 	"github.com/golang-migrate/migrate/v4"
-	_ "github.com/golang-migrate/migrate/v4/database/postgres"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
 
 	"github.com/koc-luk/backend/internal/config"
+	"github.com/koc-luk/backend/internal/dbmigrate"
 )
 
 func main() {
@@ -27,7 +27,7 @@ func main() {
 		cmd = args[0]
 	}
 
-	m, err := migrate.New("file://migrations", cfg.DatabaseURL)
+	m, err := dbmigrate.New(cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("migrate init: %v", err)
 	}
@@ -43,7 +43,7 @@ func main() {
 
 	switch cmd {
 	case "up":
-		if err := m.Up(); err != nil && err != migrate.ErrNoChange {
+		if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 			log.Fatalf("up: %v", err)
 		}
 		fmt.Println("migrations: up")
@@ -56,7 +56,7 @@ func main() {
 			}
 			steps = n
 		}
-		if err := m.Steps(-steps); err != nil && err != migrate.ErrNoChange {
+		if err := m.Steps(-steps); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 			log.Fatalf("down: %v", err)
 		}
 		fmt.Printf("migrations: down %d\n", steps)

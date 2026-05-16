@@ -11,9 +11,11 @@ import (
 
 	"github.com/koc-luk/backend/internal/auth"
 	"github.com/koc-luk/backend/internal/config"
+	"github.com/koc-luk/backend/internal/dbmigrate"
 	"github.com/koc-luk/backend/internal/handler"
 	"github.com/koc-luk/backend/internal/repository"
 	"github.com/koc-luk/backend/internal/router"
+	"github.com/koc-luk/backend/internal/seed"
 	"github.com/koc-luk/backend/internal/service"
 	smspkg "github.com/koc-luk/backend/internal/sms"
 	apperrors "github.com/koc-luk/backend/pkg/errors"
@@ -28,10 +30,36 @@ func main() {
 
 	lg := applogger.New(cfg.AppEnv)
 
+	if cfg.AutoMigrate {
+		lg.Info("auto-migrate: running")
+		if err := dbmigrate.RunUp(cfg.DatabaseURL); err != nil {
+			lg.Error("auto-migrate failed", "err", err)
+			log.Fatalf("auto-migrate: %v", err)
+		}
+		lg.Info("auto-migrate: done")
+	}
+
 	db, err := config.OpenDB(cfg)
 	if err != nil {
 		lg.Error("db open error", "err", err)
 		log.Fatalf("db open error: %v", err)
+	}
+
+	if cfg.SeedAdmin {
+		if err := seed.SeedAdmin(db, cfg); err != nil {
+			lg.Error("seed admin failed", "err", err)
+		}
+		if err := seed.SeedWeeks(db); err != nil {
+			lg.Error("seed weeks failed", "err", err)
+		}
+		lg.Info("seed: admin + weeks ensured")
+	}
+	if cfg.SeedTestUsers {
+		if err := seed.SeedTestUsers(db, cfg); err != nil {
+			lg.Error("seed test users failed", "err", err)
+		} else {
+			lg.Info("seed: test users ensured")
+		}
 	}
 
 	jwtMgr := auth.NewManager(cfg.JWTSecret, cfg.JWTExpiresIn)
@@ -59,18 +87,26 @@ func main() {
 	reportSvc := service.NewReportService(db)
 
 	app := fiber.New(fiber.Config{
-		AppName:      "kare-rehber-api",
-		ErrorHandler: apperrors.Handler,
+		AppName:               "kare-rehber-api",
+		ErrorHandler:          apperrors.Handler,
+		DisableStartupMessage: cfg.AppEnv == "production",
 	})
 
 	app.Use(recover.New())
 	app.Use(fiberlogger.New())
-	app.Use(cors.New(cors.Config{
-		AllowOrigins:     cfg.CORSAllowedOrigins,
+
+	corsCfg := cors.Config{
 		AllowCredentials: true,
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
 		AllowMethods:     "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-	}))
+	}
+	if cfg.CORSAllowedOrigins == "*" {
+		corsCfg.AllowCredentials = false
+		corsCfg.AllowOrigins = "*"
+	} else {
+		corsCfg.AllowOrigins = cfg.CORSAllowedOrigins
+	}
+	app.Use(cors.New(corsCfg))
 
 	deps := router.Deps{
 		Health:        handler.NewHealthHandler(db),

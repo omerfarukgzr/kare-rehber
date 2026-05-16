@@ -2,8 +2,12 @@ import axios, { type AxiosInstance } from 'axios'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 
+// Production'da Railway tarafından inject edilen VITE_API_URL kullanılır.
+// Dev'de boş bırakılır → vite.config.ts proxy'si /api/* taleplerini backend'e yönlendirir.
+const apiBase = (import.meta.env.VITE_API_URL ?? '').replace(/\/$/, '')
+
 export const api: AxiosInstance = axios.create({
-  baseURL: '/api/v1',
+  baseURL: `${apiBase}/api/v1`,
   timeout: 20000,
 })
 

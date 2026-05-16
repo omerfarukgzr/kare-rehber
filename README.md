@@ -8,6 +8,7 @@ Koçluk takip ve değerlendirme platformu. Onaylı veri akışı ile öğrencile
 - [Dizin Yapısı](#dizin-yapısı)
 - [Hızlı Başlangıç](#hızlı-başlangıç)
 - [Ortam Değişkenleri](#ortam-değişkenleri)
+- [Railway Deploy](#railway-deploy)
 - [Roller ve Yetkiler](#roller-ve-yetkiler)
 - [API Özeti](#api-özeti)
 - [İş Mantığı Notları](#iş-mantığı-notları)
@@ -147,12 +148,64 @@ Backend için (`backend/.env`):
 | Değişken | Açıklama | Varsayılan |
 |---|---|---|
 | `APP_ENV` | `development` / `production` | `development` |
-| `HTTP_PORT` | API port | `8080` |
-| `DATABASE_URL` | Postgres bağlantısı | `postgres://kareuser:karepass@localhost:5432/karerehber?sslmode=disable` |
+| `PORT` veya `HTTP_PORT` | API port (Railway `PORT`'u otomatik atar) | `8080` |
+| `DATABASE_URL` | Postgres bağlantısı (sslmode yoksa otomatik `disable` eklenir) | `postgres://kareuser:karepass@localhost:5433/karerehber?sslmode=disable` |
 | `JWT_SECRET` | Token imzalama | (production'da zorunlu) |
 | `JWT_EXPIRES_HOURS` | Token süresi | `24` |
 | `BCRYPT_COST` | Şifre hash cost | `12` |
-| `CORS_ALLOWED_ORIGINS` | CORS izinleri | `http://localhost:5173` |
+| `CORS_ALLOWED_ORIGINS` | Virgülle ayrılmış izinli origin'ler veya `*` | `http://localhost:5173` |
+| `AUTO_MIGRATE` | API başlarken migration'ları çalıştırsın mı? | `true` |
+| `SEED_ADMIN` | Admin + 36 hafta yoksa eklensin mi? | `true` |
+| `SEED_TEST_USERS` | Test koç/öğrenci/veli/koordinatör seed edilsin mi? | `false` |
+
+Frontend için (build sırasında okunur):
+
+| Değişken | Açıklama | Varsayılan |
+|---|---|---|
+| `VITE_API_URL` | Backend API base URL (örn. `https://api.kare.app`). Boşsa relative `/api/...` kullanır (dev'de Vite proxy yönlendirir). | `""` |
+
+## Railway Deploy
+
+Tek repo'dan iki servis çıkar: **backend** (Go API) ve **frontend** (Vue SPA). Railway otomatik olarak `railway.json` dosyasını okur.
+
+### Adım 1 — PostgreSQL
+
+1. Railway projesinde **New → Provision PostgreSQL**.
+2. Postgres servisinin `Variables` sekmesinden `DATABASE_URL` (internal) kopyalayın. Format:
+   `postgresql://postgres:****@postgres.railway.internal:5432/railway`
+
+### Adım 2 — Backend Servisi
+
+1. **New → GitHub Repo** ile `kare-rehber` repo'sunu seç.
+2. Servisin **Settings → Source → Root Directory** ayarını `backend` olarak değiştir.
+3. **Variables** sekmesinde:
+   - `DATABASE_URL` → Postgres servisinden **Reference Variable** olarak ekle (şifre değişse bile bağlı kalır).
+   - `JWT_SECRET` → uzun rastgele bir string (örn. `openssl rand -hex 32`).
+   - `APP_ENV` → `production`
+   - `CORS_ALLOWED_ORIGINS` → frontend'in Railway URL'i (Adım 3'ten sonra eklenir; başlangıçta `*` bırakılabilir).
+   - (Opsiyonel) `SEED_TEST_USERS=true` ile demo kullanıcıları otomatik oluştur. Canlıya çıktıktan sonra `false` yap.
+4. **Settings → Networking → Generate Domain** ile public URL al (örn. `kare-rehber-api.up.railway.app`).
+
+`AUTO_MIGRATE=true` (default) olduğu için API ilk başlangıçta migration'ları çalıştırıp admin'i ve haftaları seed eder. Manuel adım gerekmez.
+
+### Adım 3 — Frontend Servisi
+
+1. **New → GitHub Repo** ile aynı repo'yu seç (Railway aynı repo'dan ikinci servisi sorunsuz açar).
+2. **Settings → Source → Root Directory** = `frontend`.
+3. **Variables**:
+   - `VITE_API_URL` → backend servisinin URL'i (Adım 2'den, sondaki `/` olmadan, örn. `https://kare-rehber-api.up.railway.app`).
+4. **Settings → Networking → Generate Domain** ile frontend için public URL al.
+5. Backend servisine geri dön ve `CORS_ALLOWED_ORIGINS`'i frontend URL'i yap (örn. `https://kare-rehber.up.railway.app`).
+
+### Önemli notlar
+
+- **PORT**: Hem backend hem frontend Railway'in inject ettiği `PORT` ortam değişkenini kullanır; manuel port atama yapma.
+- **Build**:
+  - Backend: `go build -o api ./cmd/api`
+  - Frontend: `npm install --no-audit --no-fund && npm run build`
+- **Healthcheck**: Backend `/api/v1/health` endpoint'i Railway tarafından kontrol edilir.
+- **Migration'lar binary'ye embed edilir** (`backend/internal/dbmigrate/sql/`). Yeni migration eklerken oraya `.sql` koy ve commit et — Railway redeploy'da otomatik uygulanır.
+- **Frontend env'leri build-time**: `VITE_API_URL`'i değiştirirsen Railway redeploy gerekir.
 
 ## Roller ve Yetkiler
 
